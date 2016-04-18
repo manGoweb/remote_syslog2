@@ -3,6 +3,7 @@ package main
 import (
 	"net"
 	"os"
+	"fmt"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -30,11 +31,30 @@ func tailOne(file string, excludePatterns []*regexp.Regexp, logger *syslog.Logge
 		return
 	}
 
-	if tag == "" {
-		tag = path.Base(file)
+	reGroup := regexp.MustCompile(`^/srv/([^/]+)/`)
+	matches := reGroup.FindAllStringSubmatch(file, 1)
+	groupName := ""
+	if len(matches) > 0 {
+		groupName = matches[0][1]
+	}
+	
+	if (tag == "") {
+		tag = "-"
 	}
 
+	// remove log extension, if present
+	// files are info.log, exception.log etc
+	reExtension := regexp.MustCompile(`\.log$`)
+	strSeverity := reExtension.ReplaceAllString(path.Base(file), "")
+
+	reTimePrefix := regexp.MustCompile(`^\[\d+-\d+-\d+ \d+-\d+-\d+\] `)
+
 	for line := range t.Lines {
+		// remove time prefix
+		line.Text = reTimePrefix.ReplaceAllString(line.Text, "")
+		// append groupName and severity name as tags
+		line.Text = fmt.Sprintf("%s: %s: %s", groupName, strSeverity, line.Text)
+
 		if !matchExps(line.Text, excludePatterns) {
 			logger.Packets <- syslog.Packet{
 				Severity: severity,
